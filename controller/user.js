@@ -4,77 +4,76 @@ const router = express.Router();
 const ErrorHandler = require("../utils/ErrorHandler");
 const catchAsyncErrors = require("../middleware/catchAsyncErrors");
 const jwt = require("jsonwebtoken");
-const { isAuthenticated, isAdmin } = require("../middleware/auth");
+const { isAuthenticated } = require("../middleware/auth");
 const Validator = require("fastest-validator");
 const v = new Validator();
 const bcrypt = require('bcrypt');
 
 // User register
 router.post("/register", async (req, res, next) => {
+  const userSchema = {
+    name: { type: "string", empty: false, max: 255 },
+    outlet_name: { type: "string", empty: false, max: 255 },
+    address: { type: "string", optional: true, max: 255 },
+    phone: { type: "string", optional: true, max: 255 },
+    email: { type: "email", empty: false },
+    password: { type: "string", min: 8, empty: false },
+    role: { type: "string", optional: true, max: 255 },
+  };
+
+  const { body } = req;
+
+  // Validate input data
+  const validationResponse = v.validate(body, userSchema);
+
+  if (validationResponse !== true) {
+    return res.status(400).json({
+      code: 400,
+      status: "error",
+      data: {
+        error: "Validation failed",
+        details: validationResponse,
+      },
+    });
+  }
+
+  const isEmailUsed = await User.findOne({ email: body.email });
+
+  if (isEmailUsed) {
+    return res.status(400).json({
+      code: 400,
+      status: "error",
+      data: {
+        error: "Email has been used",
+      },
+    });
+  }
+
+  const hashedPassword = await bcrypt.hash(body.password, 10);
+
   try {
-    const userSchema = {
-      nama: { type: "string", empty: false, max: 255 },
-      alamat: { type: "string", optional: true, max: 255 },
-      telepon: { type: "string", optional: true, max: 255 },
-      email: { type: "email", empty: false },
-      password: { type: "string", min: 8, empty: false },
-      role: { type: "string", optional: true, max: 255 },
-    };
-
-    const { body } = req;
-
-    // validation input data
-    const validationResponse = v.validate(body, userSchema);
-
-    if (validationResponse !== true) {
-      return res.status(400).json({
-        code: 400,
-        status: "error",
-        data: {
-          error: "Validation failed",
-          details: validationResponse,
-        },
-      });
-    }
-
-    const isEmailUsed = await User.findOne({ email: body.email });
-
-    if (isEmailUsed) {
-      return res.status(400).json({
-        code: 400,
-        status: "error",
-        data: {
-          error: "Email has been used",
-        },
-      });
-    }
-
-    const password = bcrypt.hashSync(body.password, 10);
-
-    try {
-      const user = await User.create({ ...body, password });
-      return res.json({
-        code: 200,
-        status: "success",
-        data: {
-          id: user._id,
-          nama: user.nama,
-          alamat: user.alamat,
-          telepon: user.telepon,
-          email: user.email,
-          role: user.role,
-          created_at: user.created_at,
-        },
-      });
-    } catch (error) {
-      return res.status(500).json({
-        code: 500,
-        status: "error",
-        data: error.message,
-      });
-    }
+    const user = await User.create({ ...body, password: hashedPassword });
+    return res.json({
+      code: 200,
+      status: "success",
+      data: {
+        id: user._id,
+        name: user.name,
+        outlet_name: user.outlet_name,
+        address: user.address,
+        phone: user.phone,
+        email: user.email,
+        role: user.role,
+        created_at: user.created_at,
+        created_by: user.created_by,
+      },
+    });
   } catch (error) {
-    return next(new ErrorHandler(error.message, 400));
+    return res.status(500).json({
+      code: 500,
+      status: "error",
+      data: error.message,
+    });
   }
 });
 
@@ -87,23 +86,23 @@ router.post("/login", async (req, res, next) => {
     password: { type: "string", min: 8, empty: false },
   };
 
-  try {
-    // Validasi input
-    const validationResponse = v.validate(body, loginSchema);
-    if (validationResponse !== true) {
-      return res.status(400).json({
-        meta: {
-          message: "Validation failed",
-          code: 400,
-          status: "error",
-        },
-        data: validationResponse,
-      });
-    }
+  // Validate input
+  const validationResponse = v.validate(body, loginSchema);
+  if (validationResponse !== true) {
+    return res.status(400).json({
+      meta: {
+        message: "Validation failed",
+        code: 400,
+        status: "error",
+      },
+      data: validationResponse,
+    });
+  }
 
-    // Cari pengguna berdasarkan email
+  try {
+    // Find user by email
     const user = await User.findOne({ email: body.email });
-    if (!user || !user.password) {
+    if (!user) {
       return res.status(401).json({
         meta: {
           message: "Authentication failed. Please ensure your email and password are correct.",
@@ -114,8 +113,8 @@ router.post("/login", async (req, res, next) => {
       });
     }
 
-    // Periksa kecocokan kata sandi
-    const isPasswordCorrect = bcrypt.compareSync(body.password, user.password);
+    // Check password match
+    const isPasswordCorrect = await bcrypt.compare(body.password, user.password);
     if (!isPasswordCorrect) {
       return res.status(401).json({
         meta: {
@@ -127,19 +126,17 @@ router.post("/login", async (req, res, next) => {
       });
     }
 
-    // Jika autentikasi berhasil, buat token JWT
+    // Create JWT token
     const payload = {
       id: user._id,
       role: user.role,
-      // tambahkan bidang lain yang Anda butuhkan di token JWT
     };
 
     const secret = process.env.JWT_SECRET_KEY;
-    const expiresIn = "1h"; // Gunakan "1h" untuk token yang berlaku selama 1 jam
+    const expiresIn = "1h"; 
 
     const token = jwt.sign(payload, secret, { expiresIn });
 
-    // Kirim respons sukses dengan token JWT
     return res.status(200).json({
       meta: {
         message: "Authentication successful",
@@ -148,9 +145,9 @@ router.post("/login", async (req, res, next) => {
       },
       data: {
         id: user._id,
-        nama: user.nama,
-        alamat: user.alamat,
-        telepon: user.telepon,
+        name: user.name,
+        address: user.address,
+        phone: user.phone,
         email: user.email,
         role: user.role,
         token: token,
@@ -178,19 +175,15 @@ router.get(
       const users = await User.find().sort({ created_at: -1 });
 
       const userData = await Promise.all(users.map(async (user) => {
-        const unit = await UnitWork.findById(user.unitWork);
         return {
           id: user._id,
-          nama: user.nama,
-          alamat: user.alamat,
-          telepon: user.telepon,
+          name: user.name,
+          address: user.address,
+          phone: user.phone,
           email: user.email,
           role: user.role,
-          unitWork: unit ? {
-            id: unit._id,
-            name: unit.nama,
-          } : null,
           created_at: user.created_at,
+          created_by: user.created_by,
         };
       }));
 
@@ -217,7 +210,6 @@ router.delete(
     try {
       const userId = req.params.id;
 
-      // Cari dan hapus pengguna berdasarkan ID
       const user = await User.findByIdAndDelete(userId);
 
       if (!user) {
@@ -234,6 +226,120 @@ router.delete(
         data: null,
       });
     } catch (error) {
+      return next(new ErrorHandler(error.message, 500));
+    }
+  })
+);
+
+// Get user by ID
+router.get(
+  "/:id",
+  isAuthenticated,
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      const userId = req.params.id;
+
+      const user = await User.findById(userId);
+
+      if (!user) {
+        return res.status(404).json({
+          code: 404,
+          status: "error",
+          data: {
+            error: "User not found",
+          },
+        });
+      }
+
+      res.status(200).json({
+        code: 200,
+        status: "success",
+        data: user 
+        // {
+        //   id: user._id,
+        //   name: user.name,
+        //   outlet_name: user.outlet_name,
+        //   address: user.address,
+        //   phone: user.phone,
+        //   email: user.email,
+        //   role: user.role,
+        //   created_at: user.created_at,
+        // },
+      });
+    } catch (error) {
+      console.error("Error:", error);
+      return next(new ErrorHandler(error.message, 500));
+    }
+  })
+);
+
+// Update user by ID
+router.put(
+  "/:id",
+  isAuthenticated,
+  catchAsyncErrors(async (req, res, next) => {
+    const userSchema = {
+      name: { type: "string", optional: true, max: 255 },
+      outlet_name: { type: "string", optional: true, max: 255 },
+      address: { type: "string", optional: true, max: 255 },
+      phone: { type: "string", optional: true, max: 255 },
+      email: { type: "email", optional: true },
+      password: { type: "string", min: 8, optional: true },
+      role: { type: "string", optional: true, max: 255 },
+    };
+
+    const { body } = req;
+
+    // Validate input data
+    const validationResponse = v.validate(body, userSchema);
+
+    if (validationResponse !== true) {
+      return res.status(400).json({
+        code: 400,
+        status: "error",
+        data: {
+          error: "Validation failed",
+          details: validationResponse,
+        },
+      });
+    }
+
+    try {
+      const userId = req.params.id;
+      const updates = { ...body };
+
+      if (body.password) {
+        updates.password = await bcrypt.hash(body.password, 10);
+      }
+
+      const user = await User.findByIdAndUpdate(userId, updates, { new: true });
+
+      if (!user) {
+        return res.status(404).json({
+          code: 404,
+          status: "error",
+          data: {
+            error: "User not found",
+          },
+        });
+      }
+
+      res.status(200).json({
+        code: 200,
+        status: "success",
+        data: {
+          id: user._id,
+          name: user.name,
+          outlet_name: user.outlet_name,
+          address: user.address,
+          phone: user.phone,
+          email: user.email,
+          role: user.role,
+          created_at: user.created_at,
+        },
+      });
+    } catch (error) {
+      console.error("Error:", error);
       return next(new ErrorHandler(error.message, 500));
     }
   })

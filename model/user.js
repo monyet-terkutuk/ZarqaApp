@@ -5,24 +5,27 @@ const { v4: uuidv4 } = require('uuid');
 const { model, Schema } = mongoose;
 
 const userSchema = new Schema({
-  id: {
-    type: String,
-    required: true,
-    default: uuidv4,
-  },
   role: {
     type: String,
     enum: ['admin', 'dropshipper', 'gudang'],
     required: true,
   },
-  nama: {
+  name: {
     type: String,
     required: true,
   },
-  alamat: {
+  password: {
+    type: String,
+    required: true,
+  },
+  outlet_name: {
+    type: String,
+    required: true,
+  },
+  address: {
     type: String,
   },
-  telepon: {
+  phone: {
     type: String,
   },
   email: {
@@ -35,7 +38,7 @@ const userSchema = new Schema({
   },
   created_by: {
     type: String,
-    required: true,
+    default: 'Register User',
   },
   deleted_at: {
     type: Date,

@@ -30,7 +30,7 @@ const product = require("./controller/product");
 const supplier = require("./controller/supplier");
 const transaction = require("./controller/transaction");
 
-app.use("/user", user);
+app.use("/users", user);
 app.use("/dashboard", dashboard);
 app.use("/product-type", productType);
 app.use("/product", product);

@@ -1,5 +1,5 @@
 const express = require('express');
-const Produk = require('../model/product'); // Path to your produk model file
+const Produk = require('../model/product'); // Ensure the correct path to your Produk model file
 const router = express.Router();
 const ErrorHandler = require('../utils/ErrorHandler');
 const catchAsyncErrors = require('../middleware/catchAsyncErrors');
@@ -7,16 +7,13 @@ const { isAuthenticated } = require('../middleware/auth');
 const Validator = require('fastest-validator');
 const v = new Validator();
 
-// Create Produk
-router.post('/create', isAuthenticated, async (req, res, next) => {
+router.post('', isAuthenticated, async (req, res, next) => {
   try {
     const produkSchema = {
-      id: { type: "string", empty: false, max: 255 },
-      nama: { type: "string", empty: false, max: 255 },
-      stok: { type: "number", positive: true, integer: true },
-      suplierId: { type: "string", empty: false, max: 255 },
+      name: { type: "string", empty: false, max: 255 },
+      stock: { type: "number", positive: true, integer: true },
+      supplierId: { type: "string", empty: false, max: 255 },
       image: { type: "array", items: "string", optional: true },
-      created_by: { type: "string", empty: false, max: 255 },
     };
 
     const { body } = req;
@@ -35,7 +32,12 @@ router.post('/create', isAuthenticated, async (req, res, next) => {
     }
 
     try {
-      const produk = await Produk.create(body);
+      const produkData = {
+        ...body,
+        created_by: req.user.id, // Set created_by from the authenticated user
+      };
+
+      const produk = await Produk.create(produkData);
       return res.status(200).json({
         code: 200,
         status: 'success',
@@ -92,9 +94,9 @@ router.get('/:id', isAuthenticated, catchAsyncErrors(async (req, res, next) => {
 router.put('/update/:id', isAuthenticated, catchAsyncErrors(async (req, res, next) => {
   try {
     const produkSchema = {
-      nama: { type: "string", empty: false, max: 255 },
-      stok: { type: "number", positive: true, integer: true },
-      suplierId: { type: "string", empty: false, max: 255 },
+      name: { type: "string", empty: false, max: 255 },
+      stock: { type: "number", positive: true, integer: true },
+      supplierId: { type: "string", empty: false, max: 255 },
       image: { type: "array", items: "string", optional: true },
       updated_by: { type: "string", empty: false, max: 255 },
     };

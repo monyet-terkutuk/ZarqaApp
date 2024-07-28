@@ -2,19 +2,15 @@ const mongoose = require('mongoose');
 const { Schema, model } = mongoose;
 
 const produkSchema = new Schema({
-  id: {
+  name: {
     type: String,
     required: true,
   },
-  nama: {
-    type: String,
-    required: true,
-  },
-  stok: {
+  stock: {
     type: Number,
     required: true,
   },
-  suplierId: {
+  supplierId: {
     type: Schema.Types.ObjectId,
     ref: 'Supplier',
     required: true,

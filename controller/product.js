@@ -1,5 +1,7 @@
+// routes/product.js
 const express = require('express');
-const Produk = require('../model/product'); // Ensure the correct path to your Produk model file
+const Product = require('../model/product');
+const ProductType = require('../model/productType');
 const router = express.Router();
 const ErrorHandler = require('../utils/ErrorHandler');
 const catchAsyncErrors = require('../middleware/catchAsyncErrors');
@@ -7,19 +9,30 @@ const { isAuthenticated } = require('../middleware/auth');
 const Validator = require('fastest-validator');
 const v = new Validator();
 
-router.post('', isAuthenticated, async (req, res, next) => {
+
+// Create Product with Product Types
+router.post('', isAuthenticated, catchAsyncErrors(async (req, res, next) => {
   try {
-    const produkSchema = {
+    const productSchema = {
       name: { type: "string", empty: false, max: 255 },
-      stock: { type: "number", positive: true, integer: true },
-      supplierId: { type: "string", empty: false, max: 255 },
-      image: { type: "array", items: "string", optional: true },
+      color: { type: "string", empty: false, max: 255 },
+      supplierId: { type: "string", optional: true, max: 255 },
+      images: { type: "array", items: "string", optional: true },
+      productType: {
+        type: "array", items: {
+          type: "object", props: {
+            size: { type: "string", empty: false, max: 255 },
+            price: { type: "number", positive: true },
+            stock: { type: "number", integer: true },
+          }
+        }
+      }
     };
 
     const { body } = req;
 
     // Validate input data
-    const validationResponse = v.validate(body, produkSchema);
+    const validationResponse = v.validate(body, productSchema);
     if (validationResponse !== true) {
       return res.status(400).json({
         code: 400,
@@ -31,80 +44,143 @@ router.post('', isAuthenticated, async (req, res, next) => {
       });
     }
 
-    try {
-      const produkData = {
-        ...body,
-        created_by: req.user.id, // Set created_by from the authenticated user
-      };
+    // Create Product
+    const productData = {
+      name: body.name,
+      color: body.color,
+      supplierId: body.supplierId,
+      image: body.images,
+      created_by: req.user.id,
+    };
 
-      const produk = await Produk.create(produkData);
-      return res.status(200).json({
-        code: 200,
-        status: 'success',
-        data: produk,
-      });
-    } catch (error) {
-      return res.status(500).json({
-        code: 500,
-        status: 'error',
-        data: error.message,
-      });
-    }
+    const product = await Product.create(productData);
+
+    // Create Product Types
+    const productTypesData = body.productType.map(type => ({
+      size: type.size,
+      price: type.price,
+      stock: type.stock,
+      productId: product._id,
+      created_by: req.user.id,
+    }));
+
+    await ProductType.insertMany(productTypesData);
+
+    // Calculate total stock
+    const totalStock = productTypesData.reduce((acc, type) => acc + type.stock, 0);
+
+    // Populate supplier
+    await product.populate('supplierId');
+
+    return res.status(200).json({
+      id: product._id,
+      name: product.name,
+      images: product.image,
+      supplier: product.supplierId,
+      color: product.color,
+      total_stock: totalStock,
+      productType: productTypesData.map(type => ({
+        id: type._id,
+        size: type.size,
+        price: type.price,
+        stock: type.stock,
+      }))
+    });
   } catch (error) {
-    return next(new ErrorHandler(error.message, 400));
+    return next(new ErrorHandler(error.message, 500));
   }
-});
+}));
 
-// Get All Produk
+// Get All Products
 router.get('/list', isAuthenticated, catchAsyncErrors(async (req, res, next) => {
   try {
-    const produkList = await Produk.find().sort({ created_at: -1 });
+    const products = await Product.find().populate('supplierId').sort({ created_at: -1 });
+    const productList = await Promise.all(products.map(async (product) => {
+      const productTypes = await ProductType.find({ productId: product._id });
+      const totalStock = productTypes.reduce((acc, type) => acc + type.stock, 0);
+
+      return {
+        id: product._id,
+        name: product.name,
+        images: product.image,
+        supplier: product.supplierId,
+        color: product.color,
+        total_stock: totalStock,
+        productType: productTypes.map(type => ({
+          id: type._id,
+          size: type.size,
+          price: type.price,
+          stock: type.stock,
+        }))
+      };
+    }));
     res.status(200).json({
       code: 200,
       status: 'success',
-      data: produkList,
+      data: productList,
     });
   } catch (error) {
     return next(new ErrorHandler(error.message, 500));
   }
 }));
 
-// Get Single Produk by ID
+// Get Single Product by ID
 router.get('/:id', isAuthenticated, catchAsyncErrors(async (req, res, next) => {
   try {
-    const produk = await Produk.findById(req.params.id);
-    if (!produk) {
+    const product = await Product.findById(req.params.id).populate('supplierId');
+    if (!product) {
       return res.status(404).json({
         code: 404,
         status: 'error',
-        message: 'Produk not found',
+        message: 'Product not found',
       });
     }
+
+    const productTypes = await ProductType.find({ productId: product._id });
+    const totalStock = productTypes.reduce((acc, type) => acc + type.stock, 0);
+
     res.status(200).json({
-      code: 200,
-      status: 'success',
-      data: produk,
+      id: product._id,
+      name: product.name,
+      images: product.image,
+      supplier: product.supplierId,
+      color: product.color,
+      total_stock: totalStock,
+      productType: productTypes.map(type => ({
+        id: type._id,
+        size: type.size,
+        price: type.price,
+        stock: type.stock,
+      }))
     });
   } catch (error) {
     return next(new ErrorHandler(error.message, 500));
   }
 }));
 
-// Update Produk
+// Update Product
 router.put('/update/:id', isAuthenticated, catchAsyncErrors(async (req, res, next) => {
   try {
-    const produkSchema = {
+    const productSchema = {
       name: { type: "string", empty: false, max: 255 },
-      stock: { type: "number", positive: true, integer: true },
+      color: { type: "string", empty: false, max: 255 },
       supplierId: { type: "string", empty: false, max: 255 },
-      image: { type: "array", items: "string", optional: true },
-      updated_by: { type: "string", empty: false, max: 255 },
+      images: { type: "array", items: "string", optional: true },
+      productType: {
+        type: "array", items: {
+          type: "object", props: {
+            size: { type: "string", empty: false, max: 255 },
+            price: { type: "number", positive: true },
+            stock: { type: "number", positive: true, integer: true },
+          }
+        }
+      }
     };
 
     const { body } = req;
 
     // Validate input data
-    const validationResponse = v.validate(body, produkSchema);
+    const validationResponse = v.validate(body, productSchema);
     if (validationResponse !== true) {
       return res.status(400).json({
         code: 400,
@@ -116,46 +192,82 @@ router.put('/update/:id', isAuthenticated, catchAsyncErrors(async (req, res, nex
       });
     }
 
-    const produk = await Produk.findById(req.params.id);
-    if (!produk) {
+    const product = await Product.findById(req.params.id);
+    if (!product) {
       return res.status(404).json({
         code: 404,
         status: 'error',
-        message: 'Produk not found',
+        message: 'Product not found',
       });
     }
 
-    Object.assign(produk, body, { updated_at: Date.now() });
+    Object.assign(product, {
+      name: body.name,
+      color: body.color,
+      supplierId: body.supplierId,
+      image: body.images,
+      updated_by: req.user.id,
+      updated_at: Date.now()
+    });
 
-    await produk.save();
+    await product.save();
+
+    // Update Product Types
+    await ProductType.deleteMany({ productId: product._id });
+
+    const productTypesData = body.productType.map(type => ({
+      size: type.size,
+      price: type.price,
+      stock: type.stock,
+      productId: product._id,
+      created_by: req.user.id,
+      created_at: Date.now(),
+    }));
+
+    await ProductType.insertMany(productTypesData);
+
+    const totalStock = productTypesData.reduce((acc, type) => acc + type.stock, 0);
+
+    await product.populate('supplierId');
 
     res.status(200).json({
-      code: 200,
-      status: 'success',
-      data: produk,
+      id: product._id,
+      name: product.name,
+      images: product.image,
+      supplier: product.supplierId,
+      color: product.color,
+      total_stock: totalStock,
+      productType: productTypesData.map(type => ({
+        id: type._id,
+        size: type.size,
+        price: type.price,
+        stock: type.stock,
+      }))
     });
   } catch (error) {
     return next(new ErrorHandler(error.message, 500));
   }
 }));
 
-// Delete Produk
+// Delete Product
 router.delete('/delete/:id', isAuthenticated, catchAsyncErrors(async (req, res, next) => {
   try {
-    const produk = await Produk.findByIdAndDelete(req.params.id);
+    const product = await Product.findByIdAndDelete(req.params.id);
 
-    if (!produk) {
+    if (!product) {
       return res.status(404).json({
         code: 404,
         status: 'error',
-        message: 'Produk not found',
+        message: 'Product not found',
       });
     }
+
+    await ProductType.deleteMany({ productId: product._id });
 
     res.status(200).json({
       code: 200,
       status: 'success',
-      message: 'Produk deleted successfully',
+      message: 'Product deleted successfully',
     });
   } catch (error) {
     return next(new ErrorHandler(error.message, 500));

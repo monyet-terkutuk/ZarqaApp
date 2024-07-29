@@ -1,16 +1,8 @@
 const mongoose = require('mongoose');
 const { Schema, model } = mongoose;
 
-const jenisBarangSchema = new Schema({
-    id: {
-      type: String,
-      required: true,
-    },
-    ukuran: {
-      type: Number,
-      required: true,
-    },
-    warna: {
+const productType = new Schema({
+    size: {
       type: String,
       required: true,
     },
@@ -18,11 +10,11 @@ const jenisBarangSchema = new Schema({
       type: Number,
       required: true,
     },
-    produkId: {
+    productId: {
        type: Schema.Types.ObjectId,
-       ref: 'Produk',
+       ref: 'Product',
     },
-    stok: {
+    stock: {
       type: Number,
       required: true,
     },
@@ -48,5 +40,5 @@ const jenisBarangSchema = new Schema({
     },
   });
   
-  module.exports = model('JenisBarang', jenisBarangSchema);
+  module.exports = model('ProductType', productType);
   

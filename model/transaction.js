@@ -2,9 +2,9 @@ const mongoose = require('mongoose');
 const { Schema, model } = mongoose;
 
 const transaksiSchema = new Schema({
-  id_jenisBarang: {
+  productTypeID: {
     type: Schema.Types.ObjectId,
-    ref: 'JenisBarang',
+    ref: 'ProductType',
     required: true,
   },
   qty: {
@@ -15,9 +15,13 @@ const transaksiSchema = new Schema({
     type: Number,
     required: true,
   },
-  id_dropshipper: {
+  userId: {
     type: Schema.Types.ObjectId,
-    ref: 'User', // Assuming dropshipper is a user
+    ref: 'User',
+    required: true,
+  },
+  grandtotal: {
+    type: Number,
     required: true,
   },
   created_at: {
@@ -40,6 +44,11 @@ const transaksiSchema = new Schema({
   updated_by: {
     type: String,
   },
+});
+
+transaksiSchema.pre('save', function(next) {
+  this.grandtotal = this.subtotal * this.qty;
+  next();
 });
 
 module.exports = model('Transaksi', transaksiSchema);
